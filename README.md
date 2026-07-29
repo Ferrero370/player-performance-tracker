@@ -1,3 +1,5 @@
 # Player Performance Tracker
 
-Aplicació web responsive per al seguiment del rendiment i la càrrega física de jugadors i equips de futbol.
+## Objectiu
+
+Ajudar jugadors i entrenadors de futbol amateur a controlar el rendiment i la càrrega física.
