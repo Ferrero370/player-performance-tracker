@@ -1,0 +1,5 @@
+# Dependències Node.js
+backend/node_modules/
+
+# Base de dades SQLite
+backend/database.sqlite
