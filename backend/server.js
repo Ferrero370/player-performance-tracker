@@ -27,6 +27,38 @@ db.run(`
   )
 `);
 
+db.run(`
+  CREATE TABLE IF NOT EXISTS teams (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL
+  )
+`);
+
+db.get('SELECT COUNT(*) AS count FROM teams', [], (err, row) => {
+    if (err) {
+        console.error('Error checking teams:', err.message);
+        return;
+    }
+
+    if (row.count === 0) {
+        const sql = `
+            INSERT INTO teams (name)
+            VALUES (?)
+        `;
+
+        const initialTeams = [
+            ['Pallejà 1r Equip Femení'],
+            ['Pallejà juvenil A']
+        ];
+
+        initialTeams.forEach(team => {
+            db.run(sql, team);
+        });
+
+        console.log('Initial teams inserted');
+    }
+});
+
 db.get('SELECT COUNT(*) AS count FROM players', [], (err, row) => {
     if (err) {
         console.error('Error checking players:', err.message);
@@ -142,24 +174,17 @@ app.post('/api/players', (req, res) => {
 });
 
 app.get('/api/teams', (req, res) => {
-    res.json(teams);
+    db.all('SELECT * FROM teams', [], (err, rows) => {
+        if (err) {
+            return res.status(500).json({
+                success: false,
+                message: err.message
+            });
+        }
+
+        res.json(rows);
+    });
 });
-
-
-const teams = [
-    {
-        id: 1,
-        name: 'Pallejà 1r Equip Femení'
-    },
-    {
-        id: 2,
-        name: 'Pallejà juvenil A'
-    }
-];
-
-// Entrenaments i activitats
-//const activities = [];
-
 
 // Obtenir una jugadora pel seu id
 app.get('/api/players/:id', (req, res) => {
@@ -191,18 +216,30 @@ app.get('/api/players/:id', (req, res) => {
 
 // Obtenir un equip pel seu id
 app.get('/api/teams/:id', (req, res) => {
-    const teamId = parseInt(req.params.id); //converteix id en num
+    const teamId = parseInt(req.params.id);
 
-    const team = teams.find(t => t.id === teamId);
+    db.get(
+        'SELECT * FROM teams WHERE id = ?',
+        [teamId],
+        (err, team) => {
 
-    if (!team) {
-        return res.status(404).json({
-            success: false,
-            message: 'Team not found'
-        });
-    }
+            if (err) {
+                return res.status(500).json({
+                    success: false,
+                    message: err.message
+                });
+            }
 
-    res.json(team);
+            if (!team) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'Team not found'
+                });
+            }
+
+            res.json(team);
+        }
+    );
 });
 
 // Crear una nova activitat
@@ -261,37 +298,6 @@ app.get('/api/activities', (req, res) => {
 });
 
 
-
-
-
-
 app.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);
 });
-
-
-
-// Dades temporals en memòria de jugadores
-/*const players = [
-    {
-        id: 1,
-        name: 'Carla Ferrer',
-        position: 'Left winger',
-        team: 'Pallejà',
-        minutesPlayed: 780
-    },
-    {
-        id: 2,
-        name: 'Maria Garcia',
-        position: 'Striker',
-        team: 'Pallejà',
-        minutesPlayed: 640
-    },
-    {
-        id: 3,
-        name: 'Laia Puig',
-        position: 'Midfielder',
-        team: 'Pallejà',
-        minutesPlayed: 820
-    }
-];*/
