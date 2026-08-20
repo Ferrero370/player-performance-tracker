@@ -98,34 +98,53 @@ app.get('/api/players', (req, res) => {
     });
 });
 
+app.post('/api/players', (req, res) => {
+
+    const { name, position, team, minutesPlayed } = req.body;
+
+    // Validació bàsica
+    if (!name || !position || !team || minutesPlayed === undefined) {
+        return res.status(400).json({
+            success: false,
+            message: 'Missing required fields'
+        });
+    }
+
+    const sql = `
+        INSERT INTO players (name, position, team, minutesPlayed)
+        VALUES (?, ?, ?, ?)
+    `;
+
+    db.run(
+        sql,
+        [name, position, team, minutesPlayed],
+        function (err) {
+
+            if (err) {
+                return res.status(500).json({
+                    success: false,
+                    message: err.message
+                });
+            }
+
+            res.status(201).json({
+                success: true,
+                data: {
+                    id: this.lastID,
+                    name,
+                    position,
+                    team,
+                    minutesPlayed
+                }
+            });
+        }
+    );
+});
+
 app.get('/api/teams', (req, res) => {
     res.json(teams);
 });
 
-// Dades temporals en memòria de jugadores
-/*const players = [
-    {
-        id: 1,
-        name: 'Carla Ferrer',
-        position: 'Left winger',
-        team: 'Pallejà',
-        minutesPlayed: 780
-    },
-    {
-        id: 2,
-        name: 'Maria Garcia',
-        position: 'Striker',
-        team: 'Pallejà',
-        minutesPlayed: 640
-    },
-    {
-        id: 3,
-        name: 'Laia Puig',
-        position: 'Midfielder',
-        team: 'Pallejà',
-        minutesPlayed: 820
-    }
-];*/
 
 const teams = [
     {
@@ -249,3 +268,30 @@ app.get('/api/activities', (req, res) => {
 app.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);
 });
+
+
+
+// Dades temporals en memòria de jugadores
+/*const players = [
+    {
+        id: 1,
+        name: 'Carla Ferrer',
+        position: 'Left winger',
+        team: 'Pallejà',
+        minutesPlayed: 780
+    },
+    {
+        id: 2,
+        name: 'Maria Garcia',
+        position: 'Striker',
+        team: 'Pallejà',
+        minutesPlayed: 640
+    },
+    {
+        id: 3,
+        name: 'Laia Puig',
+        position: 'Midfielder',
+        team: 'Pallejà',
+        minutesPlayed: 820
+    }
+];*/
