@@ -17,6 +17,42 @@ db.run(`
   )
 `);
 
+db.run(`
+  CREATE TABLE IF NOT EXISTS players (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    position TEXT NOT NULL,
+    team TEXT NOT NULL,
+    minutesPlayed INTEGER NOT NULL
+  )
+`);
+
+db.get('SELECT COUNT(*) AS count FROM players', [], (err, row) => {
+    if (err) {
+        console.error('Error checking players:', err.message);
+        return;
+    }
+
+    if (row.count === 0) {
+        const sql = `
+            INSERT INTO players (name, position, team, minutesPlayed)
+            VALUES (?, ?, ?, ?)
+        `;
+
+        const initialPlayers = [
+            ['Carla Ferrer', 'Left winger', 'Pallejà', 780],
+            ['Maria Garcia', 'Striker', 'Pallejà', 640],
+            ['Laia Puig', 'Midfielder', 'Pallejà', 820]
+        ];
+
+        initialPlayers.forEach(player => {
+            db.run(sql, player);
+        });
+
+        console.log('Initial players inserted');
+    }
+});
+
 // Ruta principal
 app.get('/', (req, res) => {
     res.send('Player Performance Tracker API');
@@ -50,7 +86,16 @@ app.get('/api/test', (req, res) => {
 
 // Llistar jugadores
 app.get('/api/players', (req, res) => {
-    res.json(players);
+    db.all('SELECT * FROM players', [], (err, rows) => {
+        if (err) {
+            return res.status(500).json({
+                success: false,
+                message: err.message
+            });
+        }
+
+        res.json(rows);
+    });
 });
 
 app.get('/api/teams', (req, res) => {
@@ -58,7 +103,7 @@ app.get('/api/teams', (req, res) => {
 });
 
 // Dades temporals en memòria de jugadores
-const players = [
+/*const players = [
     {
         id: 1,
         name: 'Carla Ferrer',
@@ -80,7 +125,7 @@ const players = [
         team: 'Pallejà',
         minutesPlayed: 820
     }
-];
+];*/
 
 const teams = [
     {
@@ -99,18 +144,30 @@ const teams = [
 
 // Obtenir una jugadora pel seu id
 app.get('/api/players/:id', (req, res) => {
-    const playerId = parseInt(req.params.id); //converteix id en num
+    const playerId = parseInt(req.params.id);
 
-    const player = players.find(p => p.id === playerId);
+    db.get(
+        'SELECT * FROM players WHERE id = ?',
+        [playerId],
+        (err, player) => {
 
-    if (!player) {
-        return res.status(404).json({
-            success: false,
-            message: 'Player not found'
-        });
-    }
+            if (err) {
+                return res.status(500).json({
+                    success: false,
+                    message: err.message
+                });
+            }
 
-    res.json(player);
+            if (!player) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'Player not found'
+                });
+            }
+
+            res.json(player);
+        }
+    );
 });
 
 // Obtenir un equip pel seu id
