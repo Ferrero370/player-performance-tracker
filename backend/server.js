@@ -132,25 +132,21 @@ app.get('/api/players', (req, res) => {
 
 app.post('/api/players', (req, res) => {
 
-    const { name, position, team, minutesPlayed } = req.body;
+    const { name, position, teamId } = req.body;
 
     // Validació bàsica
-    if (!name || !position || !team || minutesPlayed === undefined) {
+    if (!name || !position || teamId === undefined) {
         return res.status(400).json({
             success: false,
             message: 'Missing required fields'
         });
     }
 
-    const sql = `
-        INSERT INTO players (name, position, team, minutesPlayed)
-        VALUES (?, ?, ?, ?)
-    `;
-
-    db.run(
-        sql,
-        [name, position, team, minutesPlayed],
-        function (err) {
+    // Comprovar que l'equip existeix
+    db.get(
+        'SELECT id FROM teams WHERE id = ?',
+        [teamId],
+        (err, team) => {
 
             if (err) {
                 return res.status(500).json({
@@ -159,16 +155,42 @@ app.post('/api/players', (req, res) => {
                 });
             }
 
-            res.status(201).json({
-                success: true,
-                data: {
-                    id: this.lastID,
-                    name,
-                    position,
-                    team,
-                    minutesPlayed
+            if (!team) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Team not found'
+                });
+            }
+
+            // Crear la jugadora
+            const sql = `
+                INSERT INTO players (name, position, teamId)
+                VALUES (?, ?, ?)
+            `;
+
+            db.run(
+                sql,
+                [name, position, teamId],
+                function (err) {
+
+                    if (err) {
+                        return res.status(500).json({
+                            success: false,
+                            message: err.message
+                        });
+                    }
+
+                    res.status(201).json({
+                        success: true,
+                        data: {
+                            id: this.lastID,
+                            name,
+                            position,
+                            teamId
+                        }
+                    });
                 }
-            });
+            );
         }
     );
 });
@@ -188,30 +210,39 @@ app.get('/api/teams', (req, res) => {
 
 // Obtenir una jugadora pel seu id
 app.get('/api/players/:id', (req, res) => {
+
     const playerId = parseInt(req.params.id);
 
-    db.get(
-        'SELECT * FROM players WHERE id = ?',
-        [playerId],
-        (err, player) => {
+    const sql = `
+        SELECT
+            players.id,
+            players.name,
+            players.position,
+            players.teamId,
+            teams.name AS teamName
+        FROM players
+        JOIN teams ON players.teamId = teams.id
+        WHERE players.id = ?
+    `;
 
-            if (err) {
-                return res.status(500).json({
-                    success: false,
-                    message: err.message
-                });
-            }
+    db.get(sql, [playerId], (err, player) => {
 
-            if (!player) {
-                return res.status(404).json({
-                    success: false,
-                    message: 'Player not found'
-                });
-            }
-
-            res.json(player);
+        if (err) {
+            return res.status(500).json({
+                success: false,
+                message: err.message
+            });
         }
-    );
+
+        if (!player) {
+            return res.status(404).json({
+                success: false,
+                message: 'Player not found'
+            });
+        }
+
+        res.json(player);
+    });
 });
 
 // Obtenir un equip pel seu id
@@ -297,6 +328,193 @@ app.get('/api/activities', (req, res) => {
     });
 });
 
+// Crear un nou partit
+app.post('/api/matches', (req, res) => {
+
+    const {
+        teamId,
+        opponent,
+        date,
+        homeAway,
+        teamGoals,
+        opponentGoals
+    } = req.body;
+
+    // Validació bàsica
+    if (
+        teamId === undefined ||
+        !opponent ||
+        !date ||
+        !homeAway ||
+        teamGoals === undefined ||
+        opponentGoals === undefined
+    ) {
+        return res.status(400).json({
+            success: false,
+            message: 'Missing required fields'
+        });
+    }
+
+    // Comprovar que l'equip existeix
+    db.get(
+        'SELECT id FROM teams WHERE id = ?',
+        [teamId],
+        (err, team) => {
+
+            if (err) {
+                return res.status(500).json({
+                    success: false,
+                    message: err.message
+                });
+            }
+
+            if (!team) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Team not found'
+                });
+            }
+
+            // Crear el partit
+            const sql = `
+                INSERT INTO matches (
+                    teamId,
+                    opponent,
+                    date,
+                    homeAway,
+                    teamGoals,
+                    opponentGoals
+                )
+                VALUES (?, ?, ?, ?, ?, ?)
+            `;
+
+            db.run(
+                sql,
+                [
+                    teamId,
+                    opponent,
+                    date,
+                    homeAway,
+                    teamGoals,
+                    opponentGoals
+                ],
+                function (err) {
+
+                    if (err) {
+                        return res.status(500).json({
+                            success: false,
+                            message: err.message
+                        });
+                    }
+
+                    res.status(201).json({
+                        success: true,
+                        data: {
+                            id: this.lastID,
+                            teamId,
+                            opponent,
+                            date,
+                            homeAway,
+                            teamGoals,
+                            opponentGoals
+                        }
+                    });
+                }
+            );
+        }
+    );
+});
+
+// Llistar tots els partits
+app.get('/api/matches', (req, res) => {
+
+    const sql = `
+        SELECT
+            matches.id,
+            matches.teamId,
+            teams.name AS teamName,
+            matches.opponent,
+            matches.date,
+            matches.homeAway,
+            matches.teamGoals,
+            matches.opponentGoals
+        FROM matches
+        JOIN teams ON matches.teamId = teams.id
+        ORDER BY matches.date DESC
+    `;
+
+    db.all(sql, [], (err, rows) => {
+
+        if (err) {
+            return res.status(500).json({
+                success: false,
+                message: err.message
+            });
+        }
+
+        res.json(rows);
+    });
+});
+
+
+/*app.get('/api/debug/players', (req, res) => {
+    db.all('PRAGMA table_info(players)', [], (err, rows) => {
+        if (err) {
+            return res.status(500).json({
+                success: false,
+                message: err.message
+            });
+        }
+
+        res.json(rows);
+    });
+});
+
+app.get('/api/debug/migrate-players', (req, res) => {
+
+    db.serialize(() => {
+
+        // 1. Crear la nova taula
+        db.run(`
+            CREATE TABLE players_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                position TEXT NOT NULL,
+                teamId INTEGER NOT NULL,
+                FOREIGN KEY (teamId) REFERENCES teams(id)
+            )
+        `);
+
+        // 2. Copiar les jugadores existents
+        db.run(`
+            INSERT INTO players_new (id, name, position, teamId)
+            SELECT id, name, position, 1
+            FROM players
+        `);
+
+        // 3. Eliminar la taula antiga
+        db.run(`DROP TABLE players`);
+
+        // 4. Renombrar la nova
+        db.run(`ALTER TABLE players_new RENAME TO players`, (err) => {
+
+            if (err) {
+                return res.status(500).json({
+                    success: false,
+                    message: err.message
+                });
+            }
+
+            res.json({
+                success: true,
+                message: 'Players table migrated successfully'
+            });
+
+        });
+
+    });
+
+});*/
 
 app.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);
