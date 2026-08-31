@@ -3,7 +3,12 @@ const db = require('../database');
 
 const router = express.Router();
 
-// Crear un nou partit
+
+// =====================================================
+// POST /api/matches
+// Crear un partit
+// =====================================================
+
 router.post('/', (req, res) => {
 
     const {
@@ -15,7 +20,6 @@ router.post('/', (req, res) => {
         opponentGoals
     } = req.body;
 
-    // Camps obligatoris
     if (
         teamId === undefined ||
         opponent === undefined ||
@@ -30,7 +34,6 @@ router.post('/', (req, res) => {
         });
     }
 
-    // Validar tipus de dades
     if (
         !Number.isInteger(teamId) ||
         typeof opponent !== 'string' ||
@@ -45,7 +48,6 @@ router.post('/', (req, res) => {
         });
     }
 
-    // Validar que el nom de l'adversari no estigui buit
     if (opponent.trim() === '') {
         return res.status(400).json({
             success: false,
@@ -53,7 +55,6 @@ router.post('/', (req, res) => {
         });
     }
 
-    // Validar homeAway
     if (homeAway !== 'home' && homeAway !== 'away') {
         return res.status(400).json({
             success: false,
@@ -61,7 +62,6 @@ router.post('/', (req, res) => {
         });
     }
 
-    // Validar gols
     if (teamGoals < 0 || opponentGoals < 0) {
         return res.status(400).json({
             success: false,
@@ -69,7 +69,6 @@ router.post('/', (req, res) => {
         });
     }
 
-    // Validar format de data
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
         return res.status(400).json({
             success: false,
@@ -77,10 +76,15 @@ router.post('/', (req, res) => {
         });
     }
 
-    // Comprovar que l'equip existeix
+    // Comprovar que l'equip pertany al coach
     db.get(
-        'SELECT id FROM teams WHERE id = ?',
-        [teamId],
+        `
+        SELECT id
+        FROM teams
+        WHERE id = ?
+        AND coachId = ?
+        `,
+        [teamId, req.user.id],
         (err, team) => {
 
             if (err) {
@@ -91,13 +95,12 @@ router.post('/', (req, res) => {
             }
 
             if (!team) {
-                return res.status(404).json({
+                return res.status(403).json({
                     success: false,
-                    message: 'Team not found'
+                    message: 'You do not have access to this team'
                 });
             }
 
-            // Crear el partit
             const sql = `
                 INSERT INTO matches (
                     teamId,
@@ -147,7 +150,12 @@ router.post('/', (req, res) => {
     );
 });
 
-// Llistar tots els partits
+
+// =====================================================
+// GET /api/matches
+// Llistar partits del coach
+// =====================================================
+
 router.get('/', (req, res) => {
 
     const sql = `
@@ -161,32 +169,62 @@ router.get('/', (req, res) => {
             matches.teamGoals,
             matches.opponentGoals
         FROM matches
-        JOIN teams ON matches.teamId = teams.id
+        JOIN teams
+            ON matches.teamId = teams.id
+        WHERE teams.coachId = ?
         ORDER BY matches.date DESC
     `;
 
-    db.all(sql, [], (err, rows) => {
+    db.all(
+        sql,
+        [req.user.id],
+        (err, rows) => {
 
-        if (err) {
-            return res.status(500).json({
-                success: false,
-                message: err.message
+            if (err) {
+                return res.status(500).json({
+                    success: false,
+                    message: err.message
+                });
+            }
+
+            res.json({
+                success: true,
+                data: rows
             });
         }
-
-        res.json(rows);
-    });
+    );
 });
 
-// Obtenir un partit amb totes les seves jugadores
+
+// =====================================================
+// GET /api/matches/:id
+// Obtenir un partit
+// =====================================================
+
 router.get('/:id', (req, res) => {
 
     const matchId = parseInt(req.params.id);
 
-    // Primer obtenim el partit
+    const sql = `
+        SELECT
+            matches.id,
+            matches.teamId,
+            teams.name AS teamName,
+            matches.opponent,
+            matches.date,
+            matches.homeAway,
+            matches.teamGoals,
+            matches.opponentGoals
+        FROM matches
+        JOIN teams
+            ON matches.teamId = teams.id
+        WHERE matches.id = ?
+        AND teams.coachId = ?
+    `;
+
     db.get(
-        'SELECT * FROM matches WHERE id = ?',
-        [matchId],
+        sql,
+        [matchId, req.user.id],
         (err, match) => {
 
             if (err) {
@@ -203,53 +241,49 @@ router.get('/:id', (req, res) => {
                 });
             }
 
-            // Després obtenim les jugadores del partit
-            const sql = `
-                SELECT
-                    mp.playerId,
-                    p.name,
-                    p.position,
-                    mp.started,
-                    mp.minutesPlayed,
-                    mp.goals,
-                    mp.assists
-                FROM match_players mp
-                JOIN players p ON p.id = mp.playerId
-                WHERE mp.matchId = ?
-                ORDER BY mp.started DESC, mp.minutesPlayed DESC
-            `;
-
-            db.all(sql, [matchId], (err, players) => {
-
-                if (err) {
-                    return res.status(500).json({
-                        success: false,
-                        message: err.message
-                    });
-                }
-
-                res.json({
-                    success: true,
-                    data: {
-                        match,
-                        players
-                    }
-                });
+            res.json({
+                success: true,
+                data: match
             });
         }
     );
 });
 
-// Obtenir les jugadores d'un partit
-router.get('/:id/players', (req, res) => {
 
-    const matchId = parseInt(req.params.id);
+// =====================================================
+// GET /api/matches/:matchId/players
+// Veure jugadores d'un partit
+// =====================================================
 
-    // Primer comprovem que el partit existeix
-    db.get(
-        'SELECT id FROM matches WHERE id = ?',
-        [matchId],
-        (err, match) => {
+router.get('/:matchId/players', (req, res) => {
+
+    const matchId = parseInt(req.params.matchId);
+
+    const sql = `
+        SELECT
+            mp.playerId,
+            p.name,
+            p.position,
+            mp.started,
+            mp.minutesPlayed,
+            mp.goals,
+            mp.assists
+        FROM match_players mp
+        JOIN players p
+            ON mp.playerId = p.id
+        JOIN matches m
+            ON mp.matchId = m.id
+        JOIN teams t
+            ON m.teamId = t.id
+        WHERE mp.matchId = ?
+        AND t.coachId = ?
+        ORDER BY mp.started DESC, p.name
+    `;
+
+    db.all(
+        sql,
+        [matchId, req.user.id],
+        (err, rows) => {
 
             if (err) {
                 return res.status(500).json({
@@ -258,48 +292,20 @@ router.get('/:id/players', (req, res) => {
                 });
             }
 
-            if (!match) {
-                return res.status(404).json({
-                    success: false,
-                    message: 'Match not found'
-                });
-            }
-
-            const sql = `
-                SELECT
-                    mp.playerId,
-                    p.name,
-                    p.position,
-                    mp.started,
-                    mp.minutesPlayed,
-                    mp.goals,
-                    mp.assists
-                FROM match_players mp
-                JOIN players p ON p.id = mp.playerId
-                WHERE mp.matchId = ?
-                ORDER BY mp.started DESC, mp.minutesPlayed DESC
-            `;
-
-            db.all(sql, [matchId], (err, players) => {
-
-                if (err) {
-                    return res.status(500).json({
-                        success: false,
-                        message: err.message
-                    });
-                }
-
-                res.json({
-                    success: true,
-                    data: players
-                });
+            res.json({
+                success: true,
+                data: rows
             });
         }
     );
 });
 
 
+// =====================================================
+// POST /api/matches/:matchId/players
 // Afegir una jugadora a un partit
+// =====================================================
+
 router.post('/:matchId/players', (req, res) => {
 
     const matchId = parseInt(req.params.matchId);
@@ -312,7 +318,6 @@ router.post('/:matchId/players', (req, res) => {
         assists
     } = req.body;
 
-    // Validar matchId
     if (!Number.isInteger(matchId) || matchId <= 0) {
         return res.status(400).json({
             success: false,
@@ -320,7 +325,6 @@ router.post('/:matchId/players', (req, res) => {
         });
     }
 
-    // Camps obligatoris
     if (
         playerId === undefined ||
         started === undefined ||
@@ -334,7 +338,6 @@ router.post('/:matchId/players', (req, res) => {
         });
     }
 
-    // Validar tipus de dades
     if (
         !Number.isInteger(playerId) ||
         !Number.isInteger(started) ||
@@ -348,7 +351,6 @@ router.post('/:matchId/players', (req, res) => {
         });
     }
 
-    // Validar started
     if (started !== 0 && started !== 1) {
         return res.status(400).json({
             success: false,
@@ -356,7 +358,6 @@ router.post('/:matchId/players', (req, res) => {
         });
     }
 
-    // Validar minuts
     if (minutesPlayed < 0) {
         return res.status(400).json({
             success: false,
@@ -364,7 +365,6 @@ router.post('/:matchId/players', (req, res) => {
         });
     }
 
-    // Validar gols
     if (goals < 0) {
         return res.status(400).json({
             success: false,
@@ -372,7 +372,6 @@ router.post('/:matchId/players', (req, res) => {
         });
     }
 
-    // Validar assistències
     if (assists < 0) {
         return res.status(400).json({
             success: false,
@@ -380,10 +379,17 @@ router.post('/:matchId/players', (req, res) => {
         });
     }
 
-    // Comprovar que el partit existeix
+    // Comprovar que el partit pertany al coach
     db.get(
-        'SELECT * FROM matches WHERE id = ?',
-        [matchId],
+        `
+        SELECT matches.*
+        FROM matches
+        JOIN teams
+            ON matches.teamId = teams.id
+        WHERE matches.id = ?
+        AND teams.coachId = ?
+        `,
+        [matchId, req.user.id],
         (err, match) => {
 
             if (err) {
@@ -420,7 +426,7 @@ router.post('/:matchId/players', (req, res) => {
                         });
                     }
 
-                    // Comprovar que la jugadora pertany a l'equip del partit
+                    // La jugadora ha de pertànyer a l'equip del partit
                     if (player.teamId !== match.teamId) {
                         return res.status(400).json({
                             success: false,
@@ -428,7 +434,6 @@ router.post('/:matchId/players', (req, res) => {
                         });
                     }
 
-                    // Crear participació
                     const sql = `
                         INSERT INTO match_players (
                             matchId,
@@ -455,11 +460,15 @@ router.post('/:matchId/players', (req, res) => {
 
                             if (err) {
 
-                                // Jugadora ja registrada en aquest partit
-                                if (err.message.includes('UNIQUE constraint failed')) {
+                                if (
+                                    err.message.includes(
+                                        'UNIQUE constraint failed'
+                                    )
+                                ) {
                                     return res.status(409).json({
                                         success: false,
-                                        message: 'Player is already registered in this match'
+                                        message:
+                                            'Player is already registered in this match'
                                     });
                                 }
 
@@ -488,5 +497,6 @@ router.post('/:matchId/players', (req, res) => {
         }
     );
 });
+
 
 module.exports = router;

@@ -3,26 +3,61 @@ const db = require('../database');
 
 const router = express.Router();
 
+
+// =====================================================
+// GET /api/teams
+// Llistar equips del coach autenticat
+// =====================================================
+
 router.get('/', (req, res) => {
-    db.all('SELECT * FROM teams', [], (err, rows) => {
-        if (err) {
-            return res.status(500).json({
-                success: false,
-                message: err.message
+
+    const sql = `
+        SELECT id, name, coachId
+        FROM teams
+        WHERE coachId = ?
+        ORDER BY name
+    `;
+
+    db.all(
+        sql,
+        [req.user.id],
+        (err, rows) => {
+
+            if (err) {
+                return res.status(500).json({
+                    success: false,
+                    message: err.message
+                });
+            }
+
+            res.json({
+                success: true,
+                data: rows
             });
         }
-
-        res.json(rows);
-    });
+    );
 });
 
-// Obtenir un equip pel seu id
+
+// =====================================================
+// GET /api/teams/:id
+// Obtenir un equip del coach autenticat
+// =====================================================
+
 router.get('/:id', (req, res) => {
+
     const teamId = parseInt(req.params.id);
 
+    const sql = `
+        SELECT id, name, coachId
+        FROM teams
+        WHERE id = ?
+        AND coachId = ?
+    `;
+
     db.get(
-        'SELECT * FROM teams WHERE id = ?',
-        [teamId],
+        sql,
+        [teamId, req.user.id],
         (err, team) => {
 
             if (err) {
@@ -39,9 +74,13 @@ router.get('/:id', (req, res) => {
                 });
             }
 
-            res.json(team);
+            res.json({
+                success: true,
+                data: team
+            });
         }
     );
 });
+
 
 module.exports = router;

@@ -1,18 +1,24 @@
+require('dotenv').config();
+
 const express = require('express');
 const db = require('./database');
 const playersRouter = require('./routes/players');
 const teamsRouter = require('./routes/teams');
 const activitiesRouter = require('./routes/activities');
 const matchesRouter = require('./routes/matches');
+const authRouter = require('./routes/auth');
+const authenticateToken = require('./middleware/authMiddleware');
 
 const app = express();
 const PORT = 3000;
 
 app.use(express.json());
-app.use('/api/players', playersRouter);
-app.use('/api/teams', teamsRouter);
-app.use('/api/activities', activitiesRouter);
-app.use('/api/matches', matchesRouter);
+app.use('/api/auth', authRouter);
+app.use('/api/players', authenticateToken, playersRouter);
+app.use('/api/teams', authenticateToken, teamsRouter);
+app.use('/api/activities', authenticateToken, activitiesRouter);
+app.use('/api/matches', authenticateToken, matchesRouter);
+
 
 
 db.run(`

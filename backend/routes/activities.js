@@ -58,8 +58,13 @@ router.post('/', (req, res) => {
 
     // Comprovar que la jugadora existeix
     db.get(
-        'SELECT id FROM players WHERE id = ?',
-        [playerId],
+        `SELECT players.id
+        FROM players
+        JOIN teams
+            ON players.teamId = teams.id
+        WHERE players.id = ?
+        AND teams.coachId = ?`,
+        [playerId, req.user.id],
         (err, player) => {
 
             if (err) {
@@ -124,9 +129,28 @@ router.post('/', (req, res) => {
 // Llistar activitats
 router.get('/', (req, res) => {
 
+    const sql = `
+        SELECT
+            activities.id,
+            activities.playerId,
+            players.name AS playerName,
+            activities.type,
+            activities.duration,
+            activities.rpe,
+            activities.activityDate,
+            activities.createdAt
+        FROM activities
+        JOIN players
+            ON activities.playerId = players.id
+        JOIN teams
+            ON players.teamId = teams.id
+        WHERE teams.coachId = ?
+        ORDER BY activities.activityDate DESC
+    `;
+
     db.all(
-        'SELECT * FROM activities ORDER BY activityDate DESC, id DESC',
-        [],
+        sql,
+        [req.user.id],
         (err, rows) => {
 
             if (err) {
@@ -149,9 +173,28 @@ router.get('/:id', (req, res) => {
 
     const activityId = parseInt(req.params.id);
 
+    const sql = `
+        SELECT
+            activities.id,
+            activities.playerId,
+            players.name AS playerName,
+            activities.type,
+            activities.duration,
+            activities.rpe,
+            activities.activityDate,
+            activities.createdAt
+        FROM activities
+        JOIN players
+            ON activities.playerId = players.id
+        JOIN teams
+            ON players.teamId = teams.id
+        WHERE activities.id = ?
+        AND teams.coachId = ?
+    `;
+
     db.get(
-        'SELECT * FROM activities WHERE id = ?',
-        [activityId],
+        sql,
+        [activityId, req.user.id],
         (err, activity) => {
 
             if (err) {
@@ -168,18 +211,12 @@ router.get('/:id', (req, res) => {
                 });
             }
 
-            const load = activity.duration * activity.rpe;
-
             res.json({
                 success: true,
-                data: {
-                    ...activity,
-                    load
-                }
+                data: activity
             });
         }
     );
 });
-
 
 module.exports = router;

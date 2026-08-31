@@ -3,9 +3,29 @@ const db = require('../database');
 
 const router = express.Router();
 
-// Llistar jugadores
+
+// =====================================================
+// GET /api/players
+// Llistar jugadores del coach autenticat
+// =====================================================
+
 router.get('/', (req, res) => {
-    db.all('SELECT * FROM players', [], (err, rows) => {
+
+    const sql = `
+        SELECT
+            players.id,
+            players.name,
+            players.position,
+            players.teamId
+        FROM players
+        JOIN teams
+            ON players.teamId = teams.id
+        WHERE teams.coachId = ?
+        ORDER BY players.name
+    `;
+
+    db.all(sql, [req.user.id], (err, rows) => {
+
         if (err) {
             return res.status(500).json({
                 success: false,
@@ -13,11 +33,19 @@ router.get('/', (req, res) => {
             });
         }
 
-        res.json(rows);
+        res.json({
+            success: true,
+            data: rows
+        });
     });
 });
 
-// Obtenir una jugadora pel seu id
+
+// =====================================================
+// GET /api/players/:id
+// Obtenir una jugadora
+// =====================================================
+
 router.get('/:id', (req, res) => {
 
     const playerId = parseInt(req.params.id);
@@ -27,42 +55,17 @@ router.get('/:id', (req, res) => {
             players.id,
             players.name,
             players.position,
-            players.teamId,
-            teams.name AS teamName
+            players.teamId
         FROM players
-        JOIN teams ON players.teamId = teams.id
+        JOIN teams
+            ON players.teamId = teams.id
         WHERE players.id = ?
+        AND teams.coachId = ?
     `;
 
-    db.get(sql, [playerId], (err, player) => {
-
-        if (err) {
-            return res.status(500).json({
-                success: false,
-                message: err.message
-            });
-        }
-
-        if (!player) {
-            return res.status(404).json({
-                success: false,
-                message: 'Player not found'
-            });
-        }
-
-        res.json(player);
-    });
-});
-
-// Obtenir totes les activitats d'una jugadora
-router.get('/:id/activities', (req, res) => {
-
-    const playerId = parseInt(req.params.id);
-
-    // Primer comprovem que la jugadora existeix
     db.get(
-        'SELECT id, name, position FROM players WHERE id = ?',
-        [playerId],
+        sql,
+        [playerId, req.user.id],
         (err, player) => {
 
             if (err) {
@@ -79,7 +82,55 @@ router.get('/:id/activities', (req, res) => {
                 });
             }
 
-            // Busquem totes les seves activitats
+            res.json({
+                success: true,
+                data: player
+            });
+        }
+    );
+});
+
+
+// =====================================================
+// GET /api/players/:id/activities
+// Activitats d'una jugadora
+// =====================================================
+
+router.get('/:id/activities', (req, res) => {
+
+    const playerId = parseInt(req.params.id);
+
+    const playerSql = `
+        SELECT
+            players.id,
+            players.name,
+            players.position
+        FROM players
+        JOIN teams
+            ON players.teamId = teams.id
+        WHERE players.id = ?
+        AND teams.coachId = ?
+    `;
+
+    db.get(
+        playerSql,
+        [playerId, req.user.id],
+        (err, player) => {
+
+            if (err) {
+                return res.status(500).json({
+                    success: false,
+                    message: err.message
+                });
+            }
+
+            if (!player) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'Player not found'
+                });
+            }
+
             const sql = `
                 SELECT *
                 FROM activities
@@ -96,7 +147,6 @@ router.get('/:id/activities', (req, res) => {
                     });
                 }
 
-                // Calculem la càrrega de cada activitat
                 const activitiesWithLoad = activities.map(activity => ({
                     ...activity,
                     load: activity.duration * activity.rpe
@@ -114,15 +164,31 @@ router.get('/:id/activities', (req, res) => {
     );
 });
 
-// Obtenir la càrrega dels últims 7 dies d'una jugadora
+
+// =====================================================
+// GET /api/players/:id/load
+// Càrrega dels últims 7 dies
+// =====================================================
+
 router.get('/:id/load', (req, res) => {
 
     const playerId = parseInt(req.params.id);
 
-    // Comprovar que la jugadora existeix
+    const playerSql = `
+        SELECT
+            players.id,
+            players.name,
+            players.position
+        FROM players
+        JOIN teams
+            ON players.teamId = teams.id
+        WHERE players.id = ?
+        AND teams.coachId = ?
+    `;
+
     db.get(
-        'SELECT id, name, position FROM players WHERE id = ?',
-        [playerId],
+        playerSql,
+        [playerId, req.user.id],
         (err, player) => {
 
             if (err) {
@@ -139,7 +205,6 @@ router.get('/:id/load', (req, res) => {
                 });
             }
 
-            // Càrrega total dels últims 7 dies
             const totalLoadSql = `
                 SELECT COALESCE(SUM(duration * rpe), 0) AS totalLoad
                 FROM activities
@@ -160,7 +225,6 @@ router.get('/:id/load', (req, res) => {
                         });
                     }
 
-                    // Càrrega agrupada per dia
                     const dailyLoadSql = `
                         SELECT
                             activityDate AS date,
@@ -204,15 +268,31 @@ router.get('/:id/load', (req, res) => {
     );
 });
 
-// Obtenir la càrrega setmanal d'una jugadora
+
+// =====================================================
+// GET /api/players/:id/load/weekly
+// Càrrega setmanal
+// =====================================================
+
 router.get('/:id/load/weekly', (req, res) => {
 
     const playerId = parseInt(req.params.id);
 
-    // Comprovar que la jugadora existeix
+    const playerSql = `
+        SELECT
+            players.id,
+            players.name,
+            players.position
+        FROM players
+        JOIN teams
+            ON players.teamId = teams.id
+        WHERE players.id = ?
+        AND teams.coachId = ?
+    `;
+
     db.get(
-        'SELECT id, name, position FROM players WHERE id = ?',
-        [playerId],
+        playerSql,
+        [playerId, req.user.id],
         (err, player) => {
 
             if (err) {
@@ -234,15 +314,10 @@ router.get('/:id/load/weekly', (req, res) => {
                     strftime('%Y-%W', activityDate) AS week,
                     MIN(activityDate) AS weekStart,
                     SUM(duration * rpe) AS load
-
                 FROM activities
-
                 WHERE playerId = ?
-
                 GROUP BY strftime('%Y-%W', activityDate)
-
                 ORDER BY week DESC
-
                 LIMIT 4
             `;
 
@@ -267,15 +342,31 @@ router.get('/:id/load/weekly', (req, res) => {
     );
 });
 
-// Analitzar el canvi de càrrega d'una jugadora
+
+// =====================================================
+// GET /api/players/:id/load/analysis
+// Anàlisi de càrrega
+// =====================================================
+
 router.get('/:id/load/analysis', (req, res) => {
 
     const playerId = parseInt(req.params.id);
 
-    // Comprovar que la jugadora existeix
+    const playerSql = `
+        SELECT
+            players.id,
+            players.name,
+            players.position
+        FROM players
+        JOIN teams
+            ON players.teamId = teams.id
+        WHERE players.id = ?
+        AND teams.coachId = ?
+    `;
+
     db.get(
-        'SELECT id, name, position FROM players WHERE id = ?',
-        [playerId],
+        playerSql,
+        [playerId, req.user.id],
         (err, player) => {
 
             if (err) {
@@ -312,13 +403,14 @@ router.get('/:id/load/analysis', (req, res) => {
                     });
                 }
 
-                // Necessitem almenys 2 setmanes
                 if (weeks.length < 2) {
                     return res.json({
                         success: true,
                         data: {
                             player,
-                            currentWeekLoad: weeks.length === 1 ? weeks[0].load : 0,
+                            currentWeekLoad: weeks.length === 1
+                                ? weeks[0].load
+                                : 0,
                             previousAverageLoad: null,
                             changePercentage: null,
                             message: 'Not enough data for comparison'
@@ -331,8 +423,10 @@ router.get('/:id/load/analysis', (req, res) => {
                 const previousWeeks = weeks.slice(1);
 
                 const previousAverageLoad =
-                    previousWeeks.reduce((sum, week) => sum + week.load, 0)
-                    / previousWeeks.length;
+                    previousWeeks.reduce(
+                        (sum, week) => sum + week.load,
+                        0
+                    ) / previousWeeks.length;
 
                 let changePercentage = null;
 
@@ -362,8 +456,10 @@ router.get('/:id/load/analysis', (req, res) => {
                     data: {
                         player,
                         currentWeekLoad,
-                        previousAverageLoad: Number(previousAverageLoad.toFixed(2)),
-                        changePercentage: Number(changePercentage.toFixed(2)),
+                        previousAverageLoad:
+                            Number(previousAverageLoad.toFixed(2)),
+                        changePercentage:
+                            Number(changePercentage.toFixed(2)),
                         loadStatus
                     }
                 });
@@ -372,13 +468,17 @@ router.get('/:id/load/analysis', (req, res) => {
     );
 });
 
-// Perfil complet d'una jugadora
+
+// =====================================================
+// GET /api/players/:id/profile
+// Perfil complet
+// =====================================================
+
 router.get('/:id/profile', (req, res) => {
 
     const playerId = parseInt(req.params.id);
 
-    db.get(
-        `
+    const playerSql = `
         SELECT
             p.id,
             p.name,
@@ -386,10 +486,15 @@ router.get('/:id/profile', (req, res) => {
             p.teamId,
             t.name AS team
         FROM players p
-        JOIN teams t ON t.id = p.teamId
+        JOIN teams t
+            ON t.id = p.teamId
         WHERE p.id = ?
-        `,
-        [playerId],
+        AND t.coachId = ?
+    `;
+
+    db.get(
+        playerSql,
+        [playerId, req.user.id],
         (err, player) => {
 
             if (err) {
@@ -407,37 +512,20 @@ router.get('/:id/profile', (req, res) => {
             }
 
             const matchStatsSql = `
-    SELECT
-        COUNT(DISTINCT matchId) AS matches,
-        COALESCE(SUM(started), 0) AS starts,
-        COALESCE(SUM(minutesPlayed), 0) AS minutesPlayed,
-        COALESCE(SUM(goals), 0) AS goals,
-        COALESCE(SUM(assists), 0) AS assists
-    FROM match_players
-    WHERE playerId = ?
-`;
+                SELECT
+                    COUNT(DISTINCT matchId) AS matches,
+                    COALESCE(SUM(started), 0) AS starts,
+                    COALESCE(SUM(minutesPlayed), 0) AS minutesPlayed,
+                    COALESCE(SUM(goals), 0) AS goals,
+                    COALESCE(SUM(assists), 0) AS assists
+                FROM match_players
+                WHERE playerId = ?
+            `;
 
-            db.get(matchStatsSql, [playerId], (err, statistics) => {
-
-                if (err) {
-                    return res.status(500).json({
-                        success: false,
-                        message: err.message
-                    });
-                }
-
-                const loadSql = `
-    SELECT
-        strftime('%Y-%W', activityDate) AS week,
-        SUM(duration * rpe) AS load
-    FROM activities
-    WHERE playerId = ?
-    GROUP BY strftime('%Y-%W', activityDate)
-    ORDER BY week DESC
-    LIMIT 4
-`;
-
-                db.all(loadSql, [playerId], (err, weeks) => {
+            db.get(
+                matchStatsSql,
+                [playerId],
+                (err, statistics) => {
 
                     if (err) {
                         return res.status(500).json({
@@ -446,74 +534,107 @@ router.get('/:id/profile', (req, res) => {
                         });
                     }
 
-                    let currentWeekLoad = 0;
-                    let previousAverageLoad = null;
-                    let changePercentage = null;
-                    let loadStatus = 'unknown';
+                    const loadSql = `
+                        SELECT
+                            strftime('%Y-%W', activityDate) AS week,
+                            SUM(duration * rpe) AS load
+                        FROM activities
+                        WHERE playerId = ?
+                        GROUP BY strftime('%Y-%W', activityDate)
+                        ORDER BY week DESC
+                        LIMIT 4
+                    `;
 
-                    if (weeks.length > 0) {
-                        currentWeekLoad = weeks[0].load;
-                    }
+                    db.all(
+                        loadSql,
+                        [playerId],
+                        (err, weeks) => {
 
-                    if (weeks.length >= 2) {
-
-                        const previousWeeks = weeks.slice(1);
-
-                        previousAverageLoad =
-                            previousWeeks.reduce(
-                                (sum, week) => sum + week.load,
-                                0
-                            ) / previousWeeks.length;
-
-                        if (previousAverageLoad !== 0) {
-
-                            changePercentage =
-                                ((currentWeekLoad - previousAverageLoad)
-                                    / previousAverageLoad) * 100;
-
-                            if (changePercentage > 10) {
-                                loadStatus = 'increased';
-
-                            } else if (changePercentage < -10) {
-                                loadStatus = 'decreased';
-
-                            } else {
-                                loadStatus = 'stable';
+                            if (err) {
+                                return res.status(500).json({
+                                    success: false,
+                                    message: err.message
+                                });
                             }
-                        }
-                    }
 
-                    res.json({
-                        success: true,
-                        data: {
-                            player,
-                            statistics,
-                            load: {
-                                currentWeekLoad,
-                                previousAverageLoad:
-                                    previousAverageLoad !== null
-                                        ? Number(previousAverageLoad.toFixed(2))
-                                        : null,
-                                changePercentage:
-                                    changePercentage !== null
-                                        ? Number(changePercentage.toFixed(2))
-                                        : null,
-                                loadStatus
+                            let currentWeekLoad = 0;
+                            let previousAverageLoad = null;
+                            let changePercentage = null;
+                            let loadStatus = 'unknown';
+
+                            if (weeks.length > 0) {
+                                currentWeekLoad = weeks[0].load;
                             }
-                        }
-                    });
-                });
 
-            });
+                            if (weeks.length >= 2) {
+
+                                const previousWeeks = weeks.slice(1);
+
+                                previousAverageLoad =
+                                    previousWeeks.reduce(
+                                        (sum, week) => sum + week.load,
+                                        0
+                                    ) / previousWeeks.length;
+
+                                if (previousAverageLoad !== 0) {
+
+                                    changePercentage =
+                                        ((currentWeekLoad - previousAverageLoad)
+                                            / previousAverageLoad) * 100;
+
+                                    if (changePercentage > 10) {
+                                        loadStatus = 'increased';
+
+                                    } else if (changePercentage < -10) {
+                                        loadStatus = 'decreased';
+
+                                    } else {
+                                        loadStatus = 'stable';
+                                    }
+                                }
+                            }
+
+                            res.json({
+                                success: true,
+                                data: {
+                                    player,
+                                    statistics,
+                                    load: {
+                                        currentWeekLoad,
+                                        previousAverageLoad:
+                                            previousAverageLoad !== null
+                                                ? Number(previousAverageLoad.toFixed(2))
+                                                : null,
+                                        changePercentage:
+                                            changePercentage !== null
+                                                ? Number(changePercentage.toFixed(2))
+                                                : null,
+                                        loadStatus
+                                    }
+                                }
+                            });
+                        }
+                    );
+                }
+            );
         }
     );
 });
 
+
+// =====================================================
+// POST /api/players
+// Crear jugadora
+// =====================================================
+
 router.post('/', (req, res) => {
 
-    const { name, position, teamId } = req.body;
+    const {
+        name,
+        position,
+        teamId
+    } = req.body;
 
-    // Validació bàsica
     if (!name || !position || teamId === undefined) {
         return res.status(400).json({
             success: false,
@@ -521,10 +642,15 @@ router.post('/', (req, res) => {
         });
     }
 
-    // Comprovar que l'equip existeix
+    // L'equip ha de pertànyer al coach autenticat
     db.get(
-        'SELECT id FROM teams WHERE id = ?',
-        [teamId],
+        `
+        SELECT id
+        FROM teams
+        WHERE id = ?
+        AND coachId = ?
+        `,
+        [teamId, req.user.id],
         (err, team) => {
 
             if (err) {
@@ -535,15 +661,18 @@ router.post('/', (req, res) => {
             }
 
             if (!team) {
-                return res.status(400).json({
+                return res.status(403).json({
                     success: false,
-                    message: 'Team not found'
+                    message: 'You do not have access to this team'
                 });
             }
 
-            // Crear la jugadora
             const sql = `
-                INSERT INTO players (name, position, teamId)
+                INSERT INTO players (
+                    name,
+                    position,
+                    teamId
+                )
                 VALUES (?, ?, ?)
             `;
 
@@ -573,5 +702,6 @@ router.post('/', (req, res) => {
         }
     );
 });
+
 
 module.exports = router;
