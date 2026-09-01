@@ -1,6 +1,7 @@
 require('dotenv').config();
 
 const express = require('express');
+const cors = require('cors');
 const db = require('./database');
 const playersRouter = require('./routes/players');
 const teamsRouter = require('./routes/teams');
@@ -10,6 +11,9 @@ const authRouter = require('./routes/auth');
 const authenticateToken = require('./middleware/authMiddleware');
 
 const app = express();
+app.use(cors({
+    origin: 'http://localhost:5174'
+}));
 const PORT = 3000;
 
 app.use(express.json());
